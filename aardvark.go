@@ -117,9 +117,9 @@ func splitContent(pattern []byte, filename string) bool {
 			}
 			isContent = false
 		} else {
-			// <<# tag >> will pull in the tag stored in the tagdict
-			if i := bytes.Index(linebyte, []byte("<<#")); i == 0 {
-				if j := bytes.Index(linebyte, []byte(">>")); j > i {
+			// [[$ tag ]] will pull in the tag stored in the tagdict
+			if i := bytes.Index(linebyte, []byte("[[$")); i == 0 {
+				if j := bytes.Index(linebyte, []byte("]]")); j > i {
 					tag := strings.TrimLeft(string(linebyte[2:j]), " ")
 					val, ok := tagdict[tag]
 					if ok {
@@ -194,7 +194,7 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte) {
 		return
 	}
 
-	if strings.Index(filename, "#") == 0 {
+	if strings.Index(filename, "$") == 0 {
 		// store as tag
 		contentCopy := make([]byte, len(content), len(content))
 		copy(contentCopy, content)
@@ -338,10 +338,10 @@ The 'pattern' is the pattern to split files on.
 - it should be followed by the filename. 
 - the filename should not contain any spaces
 - the default pattern is '%s' 
-- if a filename starts with a #-sign (eg #key), it is a tag, and the content 
+- if a filename starts with a $-sign (eg $key), it is a tag, and the content 
   will not be written to a file but put in a dictionary. 
-  Any subsequent file-entry can pull in the value stored under that #key 
-  by putting <<#key>> by itself on a line. See examples. 
+  Any subsequent file-entry can pull in the value stored under that $key 
+  by putting [[$key]] by itself on a line. See examples. 
 
 If after splitting the content, a file called 'aardvark.sh' exists, 
 it will be executed.
