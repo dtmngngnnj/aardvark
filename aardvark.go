@@ -19,7 +19,7 @@ import (
 
 const (
 	prologue       = "AARDVARK:"
-	defaultPattern = "##--" // default pattern to split on
+	defaultPattern = "##==" // default pattern to split on
 	executeScript  = "./aardvark.sh"
 	trace          = false // for debugging purposes
 )
