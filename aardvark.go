@@ -26,15 +26,18 @@ const (
 
 func main() {
 
-	pattern, filename, showHelpAndQuit, assemble := digestArgs()
+	pattern, filename, showHelpAndQuit, assemble, compose := digestArgs()
 
 	// step 0: if digesting of args went wrong, then just show help and quit
 	if showHelpAndQuit {
 		showHelp()
 		return
-	}
-
-	if assemble {
+	} else if compose {
+		// compose an aardvark file from a number of files
+		// eg. aardvark -c geoip/info.txt ./readtext/pg2600_war_and_peace.txt > aardvark.code
+		composeFromFiles()
+		return
+	} else if assemble {
 		// TODO
 		// other way round: instead of reading the file-content from
 		// aardvark.code, read the files from disk, and assemble aardvark.code
@@ -42,6 +45,7 @@ func main() {
 		// 2. read the files mentioned in bu-filename ('aardvark_1.code')
 		// 3. write to 'aardvark.code'
 		fmt.Println("Assemble not yet implemented.")
+		return
 	}
 
 	splitAndExecute(pattern, filename)
@@ -240,7 +244,7 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte) {
 }
 
 // digest the args passed on the command line, see further for more detail
-func digestArgs() (pattern []byte, filename string, showHelpAndQuit bool, assemble bool) {
+func digestArgs() (pattern []byte, filename string, showHelpAndQuit bool, assemble bool, compose bool) {
 	pattern = []byte(defaultPattern)
 	showHelpAndQuit = false
 	filename = "aardvark.code" // default input file
@@ -253,12 +257,20 @@ func digestArgs() (pattern []byte, filename string, showHelpAndQuit bool, assemb
 		return
 	}
 	if lenArgs > 3 {
-		showHelpAndQuit = true
+		if os.Args[1] == "-c" {
+			compose = true
+		} else {
+			showHelpAndQuit = true
+		}
 		return
 	}
 	if lenArgs == 3 {
-		pattern = []byte(os.Args[1])
-		filename = os.Args[2]
+		if os.Args[1] == "-c" {
+			compose = true
+		} else {
+			pattern = []byte(os.Args[1])
+			filename = os.Args[2]
+		}
 		return
 	}
 	if lenArgs == 2 {
@@ -323,12 +335,53 @@ func ignore(linebyte []byte) bool {
 	return true
 }
 
+// Create an aardvark.code file out of a number of files.
+// Usage: aardvark -c geoip/info.txt ./readtext/pg2600_war_and_peace.txt > aardvark.code
+func composeFromFiles() {
+	start_index := 2
+
+	// first check if all files exist
+	bail_out := false
+	for i, filename := range os.Args {
+		if i >= start_index {
+			if _, err := os.Stat(filename); os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "File doesn't exist %s\n", filename)
+				bail_out = true
+			}
+		}
+	}
+	if bail_out {
+		fmt.Fprintf(os.Stderr, "(compose aborted)\n")
+		return
+	}
+
+	// check passed, so let's do it
+	sepline := "=============================================================================="
+	for i, filename := range os.Args {
+		if i >= start_index {
+			fmt.Printf("##== %s %s\n", filename, sepline[0:(75-len(filename))])
+			fd, err := os.Open(filename)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Couldn't open file %s (%v)\n", filename, err) // cannot open file
+			} else {
+				if fd == nil {
+					fmt.Fprintf(os.Stderr, "File descriptor nil for %s\n", filename) // cannot open file
+				} else {
+					io.Copy(os.Stdout, fd) // simply copy file to stdout
+				}
+			}
+			fmt.Println()
+		}
+	}
+}
+
 func showHelp() {
 	fmt.Printf(`
 Usage: aardvark 
    or: aardvark -h
    or: aardvark <filename>
    or: aardvark <pattern> <filename>
+   or: aardvark -c <filename1> <filename2> <filename3> .. > aardvark.code
 
 The 'filename' is that of a file containing the content to be split, 
 if no argument is given it's assumed to be 'aardvark.code' 
@@ -348,6 +401,8 @@ it will be executed.
 
 On a second (and other) runs, the existing files are only overwritten 
 if the content of that file in the 'aardvark.code' file has changed. 
+
+The -c option is to compose an aardvark.code file from a number of existing files. 
     `, defaultPattern)
 	fmt.Println()
 }
