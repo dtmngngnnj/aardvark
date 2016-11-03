@@ -1,0 +1,153 @@
+##================================================================================
+##== tmp/load.py =================================================================
+#!/usr/bin/python 
+# -*- coding: utf-8 -*-
+
+import pandas as pd
+import csv   
+
+typenames= [ ('long'  , 'geonameid'),
+             ('String', 'name'),
+             ('String', 'asciiname'),
+             ('double', 'latitude'),
+             ('double', 'longitude'),
+             ('String', 'country'),
+             ('double', 'population'),
+             ('double', 'elevation') ]
+
+colnames= map( lambda r: r[1], typenames )
+
+df=pd.io.parsers.read_table("/u01/data/20150102_cities/cities1000.txt",
+                sep="\t", header=None, names= colnames,
+                quoting=csv.QUOTE_NONE,usecols=[ 0, 1, 2, 4, 5, 8, 14, 16],
+                encoding='utf-8')
+## LIMIT ON SIZE
+#df=df[:1000]
+df.to_csv('tmp/cities.tsv', index=False, sep='\t',encoding='utf-8', header=False)
+
+##================================================================================
+##== tmp/City.java =================================================================
+
+class City {
+
+    public long geonameid;
+    public String name;
+    public String asciiname;
+    public double latitude;
+    public double longitude;
+    public String country;
+    public double population;
+    public double elevation;
+
+    public City(
+          long geonameid
+        , String name
+        , String asciiname
+        , double latitude
+        , double longitude
+        , String country
+        , double population
+        , double elevation
+    ) {
+        this.geonameid=geonameid;
+        this.name=name;
+        this.asciiname=asciiname;
+        this.latitude=latitude;
+        this.longitude=longitude;
+        this.country=country;
+        this.population=population;
+        this.elevation=elevation;
+    }
+
+    public static City digestLine(String s) {
+        String[] rec=s.split("\t");
+        return new City(
+            Integer.parseInt(rec[0]),
+            rec[1],
+            rec[2],
+            Double.parseDouble(rec[3]), // lat
+            Double.parseDouble(rec[4]), // lon 
+            rec[5],
+            Double.parseDouble(rec[6]), // pop
+            Double.parseDouble(rec[7])  // elevation
+        );
+    }
+                                                                      
+}
+
+
+##================================================================================
+##== tmp/Main.java =================================================================
+
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Arrays;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.charset.Charset;
+import java.io.IOException;
+import java.util.stream.Collectors;
+
+public class Main {
+    public static void main( String args[]) throws IOException {
+
+        HashSet<String> eu28 = new HashSet<String>( Arrays.asList(
+           "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", 
+           "GB", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", 
+           "PL", "PT", "RO", "SE", "SI", "SK", "AN" ) )  ;
+
+        Path p=Paths.get("cities.tsv");
+        List<City>ls = Files.readAllLines(p, Charset.defaultCharset())
+             .stream()
+             .map( line -> City.digestLine(line))
+             .filter( c -> eu28.contains(c.country) )   // only retain EU28 countries 
+             .collect( Collectors.toList() ) ; 
+        System.out.println("citylist contains: " + ls.size() + " records.");
+
+        // aggregate: sum population by country
+        Map<String, Double> countryPop=
+            ls.stream().collect( 
+                 Collectors.groupingBy( c -> c.country, 
+                                        Collectors.summingDouble( c -> c.population ) ) );
+
+        countryPop.entrySet().stream().forEach(System.out::println);
+    }
+}
+
+
+##================================================================================
+##== aardvark.sh =================================================================
+#!/bin/bash 
+
+# Part 1: use python to convert a csv file to a tab-separated file
+chmod +x tmp/load.py 
+./tmp/load.py 
+
+
+# Part 2: compile the java code, and run it (conditionally)
+S="Main.java"
+T=${S%.java}.class
+E=${S%.java}
+
+# compile: but only if java code is younger then class
+S_AGE=`stat -c %Y "tmp/"$S`
+T_AGE=`stat -c %Y "tmp"/$T`
+if [ -z $T_AGE ] || [ $T_AGE -le $S_AGE ]
+then
+    echo "## Compiling"
+    (cd tmp; javac $S) 
+fi
+
+# check if class file was produced
+if [ ! -e "tmp/"$T ] 
+then
+    echo "## '$T' doesn't exist, cannot execute it." 
+    exit 1
+fi
+
+# execute
+(cd tmp; java Main) 
+

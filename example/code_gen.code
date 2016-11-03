@@ -1,0 +1,245 @@
+##== tmp/description.txt ========================================
+
+EntityName:City
+0  Geonameid int
+1  Name  string 
+2  Asciiname string 
+4  Lat float64      # latitude
+5  Lon float64      # longitude
+8  Country string 
+14 Population int
+16 Elevation float64
+
+Filename:/u01/data/20150102_cities/cities1000.txt
+Separator:\t
+
+##== tmp/reader.tpl ========================================
+
+package main 
+
+import ( 
+    "os"
+    "strconv"
+    "bufio"
+    "fmt"
+    "io"
+    "strings"
+) 
+
+func main() { 
+
+    filename:="«.Filename»"
+    f,err := os.Open(filename)
+    defer f.Close()
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Opening file %q: %s\n", filename,err.Error())
+        os.Exit(1) 
+    }
+    r:=bufio.NewReader(f)
+    repeat:=true
+    
+    ignoredLines:=0
+    list:=make([]«.EntityName»,0,0) 
+    for repeat {
+        line,overflow,err := r.ReadLine()
+        repeat = (err!=io.EOF) // EOF means stop repeating this loop
+        if err != nil && err!=io.EOF {
+            fmt.Fprintf(os.Stderr, "Read error: %s\n", err.Error())
+            break
+        }
+        if overflow {
+            fmt.Fprintf(os.Stderr, "Overflow error on reading!\n")
+            break
+        }
+        recs:=strings.Split(string(line),"«.Separator»")
+        if len(recs)>«.Numcols» { 
+            row,err:=extract( strings.Split(string(line),"«.Separator»"))
+            if err!=nil { 
+                // assume error already reported
+                break
+            }
+            list=append(list,row)
+        } else { 
+            ignoredLines+=1
+        }
+    }
+    if ignoredLines>0 { 
+        fmt.Fprintf(os.Stderr, "Warning: %v line(s) ignored because of too few fields.\n",ignoredLines)  
+    }
+    for i,r:=range(list) { 
+        fmt.Printf("%v\n",r)
+        if i>10 { 
+            break
+        }
+    }
+}
+
+type «.EntityName» struct { 
+«range .Cols»    «.Identifier» «.Type»
+«end»}
+
+func extract(rec []string) (record «.EntityName»,err error) { 
+«range .Cols»«if .ConversionFlag»«template "convert" .»«else»    _«.Identifier» := rec[«.Position»]«end»
+«end»
+    record = «.EntityName»{ «range .Cols»«.Identifier»:_«.Identifier», «end»}
+    return
+}
+
+«define "convert"»«if eq .Type "int"»    _«.Identifier»:=0
+    if len(rec[«.Position»])>0 {
+        _«.Identifier»,err=strconv.Atoi(rec[«.Position»])
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error converting «.Identifier»: %v\n", err.Error())
+            return
+        }
+    }«end»«if eq .Type "float64"»    _«.Identifier»:=0.0
+    if len(rec[«.Position»])>0 {
+        _«.Identifier»,err=strconv.ParseFloat(rec[«.Position»],64)
+        if err != nil {
+            fmt.Fprintf(os.Stderr, "Error converting «.Identifier»: %v\n", err.Error())
+            return
+        }
+    }«end»«end»
+
+
+##== tmp/grok.go ========================================
+package main 
+
+import (
+    "fmt"
+    "bufio"
+    "os"
+    "regexp"
+    "io/ioutil" 
+    "strings"
+    "strconv"
+    "text/template"
+)
+
+type Descriptor struct { 
+    EntityName string
+    Filename string
+    Separator string
+    Numcols int
+    Cols []Col    
+}
+
+type Col struct {
+    Position int
+    Identifier  string
+    Type string
+    ConversionFlag bool
+}
+
+func main() {
+    d,err:=getDescriptor("tmp/description.txt")     // read the description 
+    if err != nil {
+        os.Exit(1) 
+    }
+fmt.Printf("%+v\n",d)   // DROPME TODO 
+    f,err:=os.Create("tmp/reader.go")               // prepare file for output
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "File open error: %s\n", err.Error())
+        os.Exit(1) 
+    }
+    defer f.Close()
+    w:=bufio.NewWriter(f)
+
+    t:=template.New("reader.tpl")                   // create template 
+    t.Delims("«","»")
+    t=template.Must(t.ParseFiles("tmp/reader.tpl")) 
+    err=t.Execute(w,d)                              // execute the template
+    if err!=nil {
+        fmt.Fprintf(os.Stderr, "Template execute error: %s\n", err.Error())
+    }
+    w.Flush()
+}
+
+
+func getDescriptor(filename string) (desc Descriptor, err error) { 
+    desc=Descriptor{ EntityName:"x" } 
+
+    content, err := ioutil.ReadFile(filename)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "File read error: %s\n", err.Error())
+    }
+    body:=strings.TrimSpace(strings.Replace( string(content), "\n","|",-1) )
+
+    // regular expressions matching 1) key:value pair 2) fields line
+    reKeyValue := regexp.MustCompile(`^\s*(\w+)\s*:\s*(\S+).*`)
+    reFields   := regexp.MustCompile(`^\s*(\d+)\s*(\w+)\s*(\w+).*`)
+
+    desc.Cols = make([]Col, 0, 0)
+    for _,line:= range strings.Split(body,"|") { 
+        if n:=strings.Index(line,"#"); n>-1 {       // remove comments
+            line=line[:n]
+        }
+        line=strings.TrimSpace(line)                // empty string? 
+        if len(line)<=1 { 
+            continue
+        } 
+        group:=reKeyValue.FindStringSubmatch(line)  // pattern: key:value
+        if group!=nil { 
+            digestKeyValue(&desc, group) 
+            continue    
+        } 
+        group=reFields.FindStringSubmatch(line)     // pattern: num word word 
+        if group!=nil { 
+            err=digestFields(&desc, group)
+            if err!=nil { 
+                break
+            }
+        }
+    }
+    desc.Numcols=len(desc.Cols)  
+    return 
+}
+
+func digestKeyValue(desc *Descriptor, group []string) { 
+    k:= group[1]
+    v:= group[2] 
+    if (k=="EntityName") { 
+        desc.EntityName=v
+    } else if (k=="Filename") { 
+        desc.Filename=v
+    } else if (k=="Separator") { 
+        desc.Separator=v
+    } else { 
+        fmt.Fprintf(os.Stderr, "WARNING: Key:Value pair %v:%v ignored\n", k,v) 
+    }
+}
+
+func digestFields(desc *Descriptor, group []string) (err error) { 
+    p,err:=strconv.Atoi(group[1])
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Conversion error: %s\n", err.Error())
+        return 
+    }
+    id:=group[2]
+    desc.Cols=append(desc.Cols, Col{ Position:p, 
+                                   Identifier:id,
+                                   Type: group[3],
+                                   ConversionFlag: group[3]!="string" })
+    return 
+}
+
+
+
+##== aardvark.sh ========================================
+#!/bin/bash 
+
+rm grok tmp/reader.go reader    # cleanup 
+
+go build tmp/grok.go            # build the code-generator 
+
+if [ -x ./grok ]
+then
+    ./grok 
+fi
+
+if [ -f ./tmp/reader.go ]
+then
+    go build tmp/reader.go     # build the generated go code
+    ./reader                   # and execute
+fi
+

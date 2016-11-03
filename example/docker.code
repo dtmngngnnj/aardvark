@@ -1,0 +1,32 @@
+##== tmp/helloworld.go =========================================================
+package main
+
+import (
+    "fmt"
+    "time"
+    "os"
+)
+
+func main() {
+    day := time.Now().Weekday()
+    name:=os.Getenv("YOURNAME")
+    fmt.Printf("Yo %v, today is %v!\n", name, day) 
+}
+
+##== tmp/helloworld.dockerfile =================================================
+FROM debian
+COPY helloworld . 
+ENTRYPOINT [ "./helloworld" ]
+
+##== aardvark.sh ===============================================================
+#!/bin/bash 
+
+echo "--- Compiling -----------------------------------------------"
+go build tmp/helloworld.go 
+
+echo "--- Build container -----------------------------------------"
+docker build -f tmp/helloworld.dockerfile -t helloworld:v1 .
+
+echo "--- Run container -------------------------------------------"
+docker run -e YOURNAME=CarréConfituurke  helloworld:v1 
+

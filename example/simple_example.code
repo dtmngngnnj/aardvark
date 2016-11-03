@@ -1,0 +1,22 @@
+##================================================================================
+##== generate_data.R
+cat ("hello world!")
+
+##================================================================================
+##== capitalize.py 
+#!/usr/bin/python 
+
+import sys
+import string
+
+for line in sys.stdin:
+    print string.capwords(line) 
+
+##================================================================================
+##== aardvark.sh  
+#!/bin/bash
+R_EXE="/usr/bin/R --slave --vanilla --quiet"
+PY_EXE="/usr/bin/python2"
+
+$R_EXE -f ./generate_data.R | $PY_EXE ./capitalize.py
+

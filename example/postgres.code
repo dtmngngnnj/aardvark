@@ -1,0 +1,121 @@
+##================================================================================
+##== $sqlquery_java  =============================================================
+
+" select country, sum(population) as sum_pop "+
+" from t_city "+
+" where country in ('AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',"+
+"          'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL',"+
+"          'PL', 'PT', 'RO', 'SE', 'SI', 'SK', 'AN')"+
+" group by country"+
+" order by 2 desc;"
+
+##================================================================================
+##== $print_result_java  =========================================================
+
+            System.out.printf("%s\t%d\n", rs.getString(1), rs.getInt(2));
+
+##================================================================================
+##== plot.R ======================================================================
+topn=7 # experiment: eg. change to top-10 or top-5
+df<-read.table('result.csv',sep="\t",header=F)
+colnames(df)=c("country", "population") 
+
+pd=rbind( df[1:topn,], data.frame(country="Rest",
+                                  population=sum(df[(topn+1):nrow(df),"population"])) )
+pct <- round(pd$population/sum(pd$population)*100) 
+pd$label=paste(pd$country," (",pct,"%)",sep="") 
+
+#x11(width=800, height=300)    
+png('pie.png',width=800, height=400)
+par(mfrow = c(1, 2))
+pie(pd$population,labels=pd$label,main="EU population before Brexit",
+    col=rainbow(nrow(pd))) 
+
+# drop GB 
+df<-df[ df$country!='GB',]
+pd=rbind( df[1:topn,], data.frame(country="Rest",
+                                  population=sum(df[(topn+1):nrow(df),"population"])) )
+pct <- round(pd$population/sum(pd$population)*100) 
+pd$label=paste(pd$country," (",pct,"%)",sep="") 
+
+pie(pd$population,labels=pd$label,main="EU population after Brexit", 
+    col=rainbow(nrow(pd))) 
+dev.off()
+
+##================================================================================
+##== dirty/query/Query.java ======================================================
+package query;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+
+public class Query {
+    public static void main( String args[]) {
+        Connection con = null;
+        Statement stmt = null;
+        try {
+            Class.forName("org.postgresql.Driver");
+            con = DriverManager.getConnection("jdbc:postgresql://172.16.1.43:5432/dmn",
+                                              "dmn", "dmn");
+            con.setAutoCommit(false);
+
+            stmt = con.createStatement();
+            ResultSet rs = stmt.executeQuery( 
+[[$sqlquery_java]]
+            );
+
+            while ( rs.next() ) {
+[[$print_result_java]]
+            }
+            rs.close();
+            stmt.close();
+            con.close();
+        } catch ( Exception e ) {
+            System.err.println( e.getClass().getName()+": "+ e.getMessage() );
+            System.exit(0);
+       }
+     }
+}
+
+##================================================================================
+##== aardvark.sh =================================================================
+#!/bin/bash 
+
+export DB_RESULT="result.csv"
+
+# --------------------------------------------------------------
+# Part 1: compile the java file, and run it (conditionally)
+export POSTGRESJDBC="/opt/jdbc/postgres/postgresql-9.4.1208.jar"
+
+S="query/Query.java"
+T=${S%.java}.class
+E=${S%.java}
+
+# compile: but only if java code is younger then class
+S_AGE=`stat -c %Y "dirty/"$S`
+T_AGE=`stat -c %Y "dirty"/$T`
+if [ -z $T_AGE ] || [ $T_AGE -le $S_AGE ]
+then
+    echo "## Compiling"
+    (cd dirty; javac $S) 
+fi
+
+# check if class file was produced
+if [ ! -e "dirty/"$T ] 
+then
+    echo "## '$T' doesn't exist, can't run it." 
+    exit 1
+fi
+
+# execute
+echo "Fetching data from DB"
+java -cp $POSTGRESJDBC:dirty $E $* > $DB_RESULT
+
+# --------------------------------------------------------------
+# Part 2: kick off R 
+echo "Plotting" 
+R_EXE="/usr/bin/R --slave --vanilla --quiet"
+$R_EXE -f ./plot.R 
+

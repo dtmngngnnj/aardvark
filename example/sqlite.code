@@ -1,0 +1,71 @@
+##== $sql =====================================================================
+select iata,airport_name,region
+from   t_airport
+where  region like '%ca' ;
+##=============================================================================
+##== create_load_exec.sql -----------------------------------------------------
+create table t_airport (
+     iata varchar(8)
+    ,icao varchar(8)
+    ,city_served varchar(64)
+    ,region varchar(64)
+    ,airport_name varchar(128)
+    );
+.mode csv
+.import data.csv t_airport 
+.mode tabs
+[[$sql]]
+##=============================================================================
+##== aardvark.sh --------------------------------------------------------------
+#!/bin/bash 
+rm test.db 
+cat create_load_exec.sql | sqlite3 test.db  
+##=============================================================================
+##== data.csv -----------------------------------------------------------------
+WAP,SCAP,Alto Palena,Los Lagos,SCAP
+ZUD,SCAC,Ancud,Los Lagos,SCAC
+TNM,SCRM,Antarctica,Magallanes & Antártica,SCRM
+ANF,SCFA,Antofagasta,Antofagasta,SCFA
+ARI,SCAR,Arica,Arica & Parinacota,SCAR
+BBA,SCBA,Balmaceda,Aisén,SCBA
+CJC,SCCF,Calama,Antofagasta,SCCF
+WCA,SCST,Castro,Los Lagos,SCST
+SMB,SCSB,Cerro Sombrero,Magallanes & Antártica,SCSB
+WCH,SCTN,Chaitén,Los Lagos,SCTN
+CNR,SCRA,Chañaral,Atacama,SCRA
+CCH,SCCC,Chile Chico,Aisén,SCCC
+YAI,SCCH,Chillán,Biobío,SCCH
+GXQ,SCCY,Coihaique,Aisén,SCCY
+LGR,SCHR,Cochrane,Aisén,SCHR
+CCP,SCIE,Concepción,Biobío,SCIE
+CPO,SCHA,Copiapó,Atacama,SCHA
+COW,SCQB,Coquimbo,Coquimbo,SCQB
+ZCQ,SCIC,Curicó,Maule,SCIC
+ESR,SCES,El Salvador,Atacama,SCES
+FFU,SCFT,Futaleufú,Los Lagos,SCFT
+IQQ,SCDA,Iquique,Tarapacá,SCDA
+IPC,SCIP,Isla de Pascua,Valparaíso,SCIP
+LSC,SCSE,La Serena,Coquimbo,SCSE
+ZLR,SCLN,Linares,Maule,SCLN
+LOB,SCAN,Los Andes,Valparaíso,SCAN
+LSQ,SCAG,Los Ángeles,Biobío,SCAG
+ZOS,SCJO,Osorno,Los Lagos,SCJO
+OVL,SCOV,Ovalle,Coquimbo,SCOV
+WPR,SCFM,Porvenir,Magallanes & Antártica,SCFM
+ZPC,SCPC,Pucón,Araucanía,SCPC
+WPA,SCAS,Puerto Aisén,Aisén,SCAS
+PMC,SCTE,Puerto Montt,Los Lagos,SCTE
+PNT,SCNT,Puerto Natales,Magallanes & Antártica,SCNT
+WPU,SCGZ,Puerto Williams,Magallanes & Antártica,SCGZ
+PUQ,SCCI,Punta Arenas,Magallanes & Antártica,SCCI
+QRC,SCRG,Rancagua,OHiggins,SCRG
+SSD,SCSF,San Felipe,Valparaíso,SCSF
+SCL,SCEL,Santiago,Santiago Metropolitan,SCEL
+ULC,SCTI,Santiago,Santiago Metropolitan,SCTI
+TLX,SCTL,Talca,Maule,SCTL
+ZCO,SCTC,Temuco,Araucanía,SCTC
+TOQ,SCBE,Tocopilla,Antofagasta,SCBE
+ZAL,SCVD,Valdivia,Los Ríos,SCVD
+VLR,SCLL,Vallenar,Atacama,SCLL
+VAP,SCVA,Valparaíso,Valparaíso,SCVA
+KNA,SCVM,Viña del Mar - Concón,Valparaíso,SCVM

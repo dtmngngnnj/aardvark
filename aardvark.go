@@ -80,6 +80,7 @@ func splitContent(pattern []byte, filename string) bool {
 	defer f.Close()
 	r := bufio.NewReaderSize(f, 4096)
 
+	containsTagsFlag := false
 	lineCounter := 0
 	var content bytes.Buffer
 	for {
@@ -105,9 +106,9 @@ func splitContent(pattern []byte, filename string) bool {
 			}
 			// write to file or store in dict[tag], the lines we have collected up to now.
 			if len(chunkfilename) > 0 {
-				writeFile(chunkfilename, content.Bytes(), tagdict)
+				writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag)
+				containsTagsFlag = false
 			}
-
 			content.Reset() // empty the old content
 
 			// get the chunkfilename after the split-pattern: it's either a filename or a tag
@@ -122,19 +123,12 @@ func splitContent(pattern []byte, filename string) bool {
 			isContent = false
 		} else {
 			// [[$ tag ]] will pull in the tag stored in the tagdict
-			if i := bytes.Index(linebyte, []byte("[[$")); i == 0 {
-				if j := bytes.Index(linebyte, []byte("]]")); j > i {
-					tag := strings.TrimLeft(string(linebyte[2:j]), " ")
-					val, ok := tagdict[tag]
-					if ok {
-						content.Write(val)
-						isContent = false
-					} else {
+			if !containsTagsFlag {
+				if i := bytes.Index(linebyte, []byte("[[$")); i >= 0 {
+					if j := bytes.Index(linebyte, []byte("]]")); j > i {
+						containsTagsFlag = true
 						isContent = true
 					}
-					/*if trace {
-						fmt.Printf("TAG:[%s] : %s\n", tag, string(tagdict[tag]))
-					}*/
 				}
 			}
 		}
@@ -147,7 +141,7 @@ func splitContent(pattern []byte, filename string) bool {
 		fmt.Printf("%s Error: %v\n", prologue, err)
 	}
 	if (len(chunkfilename) > 0) && (content.Len() > 0) {
-		writeFile(chunkfilename, content.Bytes(), tagdict)
+		writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag)
 	}
 
 	if trace {
@@ -189,9 +183,9 @@ func execAardvarkShScript() bool {
 
 // Write the content to a file OR store it in tagdict.
 // The file will not be written if the content is hasn't changed.
-func writeFile(filename string, content []byte, tagdict map[string][]byte) {
+func writeFile(filename string, content []byte, tagdict map[string][]byte, containsTagsFlag bool) {
 	if trace {
-		fmt.Printf("TRACE: Handling %s\n", filename)
+		fmt.Printf("TRACE: Handling %s, containsTagsFlag=%v\n", filename, containsTagsFlag)
 	}
 	if len(filename) == 0 {
 		fmt.Printf("%s WARNING: No filename given, nothing written!\n", prologue)
@@ -202,8 +196,12 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte) {
 		// store as tag
 		contentCopy := make([]byte, len(content), len(content))
 		copy(contentCopy, content)
-		tagdict[filename] = contentCopy
+		tagdict[filename] = bytes.TrimRight(contentCopy, "\n")
 		return
+	}
+
+	if containsTagsFlag {
+		content = []byte(replaceTags(content, tagdict))
 	}
 
 	writereason := ""
@@ -241,6 +239,34 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte) {
 	} else {
 		fmt.Printf("%s %q untouched.\n", prologue, filename)
 	}
+}
+
+func replaceTags(in []byte, tagdict map[string][]byte) []byte {
+	var out bytes.Buffer
+	scanner := bufio.NewScanner(bytes.NewReader(in))
+	//first := true
+	sep := ""
+	for scanner.Scan() {
+		out.WriteString(sep)
+		//fmt.Printf("\n---\n%s---\n", scanner.Text())
+		txt := scanner.Bytes()
+		for {
+			start := bytes.Index(txt, []byte("[[$"))
+			end := bytes.Index(txt, []byte("]]"))
+			if start >= 0 && end > 0 && end > start {
+				tag := strings.TrimSpace(string(txt[start+2 : end]))
+				out.Write(txt[:start])
+				out.Write(replaceTags(tagdict[tag], tagdict))
+				txt = txt[end+2:]
+			} else {
+				out.Write(txt)
+				break
+			}
+		}
+		//first = false
+		sep = "\n"
+	}
+	return out.Bytes()
 }
 
 // digest the args passed on the command line, see further for more detail

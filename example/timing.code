@@ -1,0 +1,45 @@
+##================================================================================
+##== pandas_load.py 
+import pandas as pd
+df=pd.io.parsers.read_table("sample.csv",sep=',')
+
+##================================================================================
+##== para_load.py 
+import pandas as pd
+import paratext
+df = paratext.load_csv_to_pandas('sample.csv')
+
+##================================================================================
+##== plot.R
+
+png('chart.png',width=800, height=400) 
+df<-read.table('timing.csv', sep='|', header=F)  
+
+x=df[df$V1=='pandas_load.py',c('V2')]
+y1=df[df$V1=='pandas_load.py',c('V3')]
+y2=df[df$V1=='para_load.py',c('V3')]
+
+plot(x,y1,type='b',pch=19,col='red', main="Load CSV: Pandas vs Paratext", xlab="numlines", ylab="time")
+lines(x,y2,type='b',pch=19,col='blue')
+dev.off()
+
+
+##================================================================================
+##== aardvark.sh  
+#!/bin/bash
+PY_EXE="/usr/bin/python2"
+
+rm timing.csv
+for N in 1000 10000 25000 50000 75000 100000 250000 500000 750000 1000000 2500000 \
+         5000000 7500000 10000000 15000000 20000000 25000000 30000000 
+do
+    head -$N train.csv > sample.csv
+    for PYSCRIPT in pandas_load.py para_load.py 
+    do
+       /usr/bin/time -f "$PYSCRIPT|$N|%e|%U|%S" $PY_EXE $PYSCRIPT  2>> timing.csv
+    done
+done 
+
+# plot the result
+/usr/bin/R --slave --vanilla --quiet -f ./plot.R
+
