@@ -54,10 +54,16 @@ func main() {
 // the core aardvark functionality
 func splitAndExecute(pattern []byte, filename string) {
 
-	// step 1: split the content (updating the files only if needed)
-	ok := splitContent(pattern, filename)
+	// step 1: digest and split the content PASS 1: only read and store the tags
+	// (this is to ensure all tags are stored in the tagdict and can be referenced
+	//  while only defined later on in the aardvark.code file)
+	tagdict := make(map[string][]byte)
+	ok := splitContent(pattern, filename, tagdict, true)
 
-	// step 2: execute the aardvark.sh script
+	// step 2: digest and split the content PASS 2: also write the files
+	ok = splitContent(pattern, filename, tagdict, false)
+
+	// step 3: execute the aardvark.sh script
 	if ok {
 		execAardvarkShScript() // check return value?
 	}
@@ -66,11 +72,11 @@ func splitAndExecute(pattern []byte, filename string) {
 
 // split the content into files, storing tags in the tagdict,
 // or filling in the tags from the tagdict
-func splitContent(pattern []byte, filename string) bool {
+// when noFileWrite == true, no files are written, only the tags are written/stored
+func splitContent(pattern []byte, filename string, tagdict map[string][]byte, noFileWrite bool) bool {
 	if trace {
 		fmt.Println("TRACE: splitContent()")
 	}
-	tagdict := make(map[string][]byte)
 	chunkfilename := ""
 	f, err := os.Open(filename)
 	if err != nil {
@@ -106,7 +112,7 @@ func splitContent(pattern []byte, filename string) bool {
 			}
 			// write to file or store in dict[tag], the lines we have collected up to now.
 			if len(chunkfilename) > 0 {
-				writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag)
+				writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag, noFileWrite)
 				containsTagsFlag = false
 			}
 			content.Reset() // empty the old content
@@ -141,7 +147,7 @@ func splitContent(pattern []byte, filename string) bool {
 		fmt.Printf("%s Error: %v\n", prologue, err)
 	}
 	if (len(chunkfilename) > 0) && (content.Len() > 0) {
-		writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag)
+		writeFile(chunkfilename, content.Bytes(), tagdict, containsTagsFlag, noFileWrite)
 	}
 
 	if trace {
@@ -183,15 +189,18 @@ func execAardvarkShScript() bool {
 
 // Write the content to a file OR store it in tagdict.
 // The file will not be written if the content is hasn't changed.
-func writeFile(filename string, content []byte, tagdict map[string][]byte, containsTagsFlag bool) {
+func writeFile(filename string, content []byte, tagdict map[string][]byte,
+	containsTagsFlag bool, noFileWrite bool) {
 	if trace {
-		fmt.Printf("TRACE: Handling %s, containsTagsFlag=%v\n", filename, containsTagsFlag)
+		fmt.Printf("TRACE: Handling %s, containsTagsFlag=%v noFileWrite=%v\n",
+			filename, containsTagsFlag, noFileWrite)
 	}
 	if len(filename) == 0 {
 		fmt.Printf("%s WARNING: No filename given, nothing written!\n", prologue)
 		return
 	}
 
+	// store the tag in the tagdict
 	if strings.Index(filename, "$") == 0 {
 		// store as tag
 		contentCopy := make([]byte, len(content), len(content))
@@ -200,8 +209,12 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte, conta
 		return
 	}
 
+	if noFileWrite {
+		return
+	}
+
 	if containsTagsFlag {
-		content = []byte(replaceTags(content, tagdict))
+		content = []byte(replaceTags(content, tagdict, 0))
 	}
 
 	writereason := ""
@@ -241,7 +254,11 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte, conta
 	}
 }
 
-func replaceTags(in []byte, tagdict map[string][]byte) []byte {
+func replaceTags(in []byte, tagdict map[string][]byte, recurseCounter int) []byte {
+	if recurseCounter > 1000 {
+		fmt.Fprintf(os.Stderr, "ERROR: Maximum recursion depth exceeded due to circular referencing!\n")
+		os.Exit(1)
+	}
 	var out bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(in))
 	//first := true
@@ -256,7 +273,7 @@ func replaceTags(in []byte, tagdict map[string][]byte) []byte {
 			if start >= 0 && end > 0 && end > start {
 				tag := strings.TrimSpace(string(txt[start+2 : end]))
 				out.Write(txt[:start])
-				out.Write(replaceTags(tagdict[tag], tagdict))
+				out.Write(replaceTags(tagdict[tag], tagdict, recurseCounter+1))
 				txt = txt[end+2:]
 			} else {
 				out.Write(txt)
