@@ -18,11 +18,14 @@ import (
 // TODO: develop assemble functionality
 
 const (
-	prologue       = "AARDVARK:"
-	defaultPattern = "##==" // default pattern to split on
-	executeScript  = "./aardvark.sh"
-	trace          = false // for debugging purposes
+	prologue          = "AARDVARK:"
+	defaultPattern    = "##=="          // default pattern to split on
+	executeScript     = "./aardvark.sh" // including path
+	executeScriptName = "aardvark.sh"   // filename only
+	trace             = false           // for debugging purposes
 )
+
+var globalAardvarkshHash [20]byte
 
 func main() {
 
@@ -167,6 +170,19 @@ func execAardvarkShScript() bool {
 		return false
 	}
 
+	// so the script exists, let's calc its hash
+	scriptcontent, err := ioutil.ReadFile(executeScript)
+	if err != nil {
+		fmt.Printf("%s Script '%s' does NOT exist.", prologue, executeScript)
+	}
+	fileAardvarkshHash := sha1.Sum(scriptcontent)
+
+	// if it is not the same as what's in the current .code file, return
+	if fileAardvarkshHash != globalAardvarkshHash {
+		fmt.Printf("%s Script '%s' differs, not executing.", prologue, executeScript)
+		return false
+	}
+
 	// if it is not executable, make it executable...
 	if (stat.Mode() & 0111) == 0 {
 		if trace {
@@ -188,7 +204,7 @@ func execAardvarkShScript() bool {
 }
 
 // Write the content to a file OR store it in tagdict.
-// The file will not be written if the content is hasn't changed.
+// The file will not be written if the content hasn't changed.
 func writeFile(filename string, content []byte, tagdict map[string][]byte,
 	containsTagsFlag bool, noFileWrite bool) {
 	if trace {
@@ -200,7 +216,7 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte,
 		return
 	}
 
-	// store the tag in the tagdict
+	// if it is a tag, store it in the tagdict
 	if strings.Index(filename, "$") == 0 {
 		// store as tag
 		contentCopy := make([]byte, len(content), len(content))
@@ -215,6 +231,12 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte,
 
 	if containsTagsFlag {
 		content = []byte(replaceTags(content, tagdict, 0))
+	}
+
+	// housekeeping: if we are looking at 'aardvark.sh', then store the hash
+	// in a global var
+	if strings.HasSuffix(filename, executeScriptName) {
+		globalAardvarkshHash = sha1.Sum(content)
 	}
 
 	writereason := ""
@@ -249,9 +271,8 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte,
 			return
 		}
 		ioutil.WriteFile(filename, []byte(content), 0644)
-	} else {
-		fmt.Printf("%s %q untouched.\n", prologue, filename)
 	}
+
 }
 
 func replaceTags(in []byte, tagdict map[string][]byte, recurseCounter int) []byte {
@@ -402,7 +423,11 @@ func composeFromFiles() {
 	sepline := "=============================================================================="
 	for i, filename := range os.Args {
 		if i >= start_index {
-			fmt.Printf("##== %s %s\n", filename, sepline[0:(75-len(filename))])
+			numsepchars := 75 - len(filename)
+			if numsepchars < 2 {
+				numsepchars = 2
+			}
+			fmt.Printf("##== %s %s\n", filename, sepline[0:numsepchars])
 			fd, err := os.Open(filename)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Couldn't open file %s (%v)\n", filename, err) // cannot open file
