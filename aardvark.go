@@ -239,7 +239,15 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte,
 		globalAardvarkshHash = sha1.Sum(content)
 	}
 
+	// do we need to use append mode?
 	writereason := ""
+	appendToExisting := false
+	if (len(writereason) == 0) && (strings.Index(filename, "+")) == 0 {
+		filename = filename[1:]
+		appendToExisting = true
+		writereason = "appending."
+	}
+
 	// read the 'old' content from file
 	oldcontent, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -270,9 +278,30 @@ func writeFile(filename string, content []byte, tagdict map[string][]byte,
 			fmt.Println("Error creating parent directory: %v", err)
 			return
 		}
-		ioutil.WriteFile(filename, []byte(content), 0644)
-	}
 
+		if appendToExisting {
+			if trace {
+				fmt.Printf("TRACE: appendding to: [%s]\n", filename)
+			}
+			f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Printf("Error appending to file %v: %q\n", filename, err)
+				return
+			}
+			defer f.Close()
+
+			_, err = f.Write(content)
+			if err != nil {
+				fmt.Printf("Error writing to file in append mode %q: %v\n", filename, err)
+				return
+			}
+		} else {
+			if trace {
+				fmt.Printf("TRACE: writing to: [%s]\n", filename)
+			}
+			ioutil.WriteFile(filename, content, 0644)
+		}
+	}
 }
 
 func replaceTags(in []byte, tagdict map[string][]byte, recurseCounter int) []byte {
